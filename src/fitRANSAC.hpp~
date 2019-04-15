@@ -1,0 +1,58 @@
+#ifndef FITRANSAC_HPP
+#define FITRANSAC_HPP
+
+#include "stereo_vision_node.hpp"
+#include "GVar.hpp"
+
+cv::Mat edge_right;
+cv::Mat edge_left;
+
+cv::Mat right_hue_range;
+cv::Mat right_rgb_range;
+cv::Mat left_hue_range;
+cv::Mat left_rgb_range;
+cv::Mat right_comb_frame;
+cv::Mat left_comb_frame;
+cv::Mat Gaussian_Blur_right;
+cv::Mat Gaussian_Blur_left;
+
+std::vector<cv::Point2d> point_right;
+std::vector<cv::Point2d> point_left;
+
+// 4 point objects to hold the random samples
+cv::Point2d rightA;
+cv::Point2d rightB;
+cv::Point2d rightC;
+cv::Point2d rightD;
+
+// distances between points
+double AB_right;
+double BC_right;
+double CA_right;
+double DC_right;
+
+// varibales for line equations y = mx + b
+double m_AB_right;
+double b_AB_right;
+double m_BC_right;
+double b_BC_right;
+
+// varibles for line midpoints
+double Xmidright_AB;
+double Ymidright_AB;
+double Xmidright_BC;
+double Ymidright_BC;
+
+// variables for perpendicular bisectors
+double m2_AB_right;
+double m2_BC_right;
+double b2_AB_right;
+double b2_BC_right;
+
+int x_right, y_right;
+cv::Point2d center_right;
+double radius_right;
+
+void circleRANSAC(cv::Mat &hsv_right, cv::Mat &hsv_left, cv::Mat &rgb_right, cv::Mat &rgb_left, vector<cv::Vec3f> &circle_right, vector<cv::Vec3f> &circle_left, double canny_threshold, double circle_threshold, int numIterations);
+
+#endif

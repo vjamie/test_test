@@ -1,0 +1,35 @@
+#ifndef STEREO_VISION_NODE_H
+#define STEREO_VISION_NODE_H
+
+// ROS includes
+#include <ros/ros.h>
+
+// OpenCV includes
+#include <opencv2/opencv.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
+
+// ZED includes
+#include <zed/Camera.hpp>
+#include <zed/utils/GlobalDefine.hpp>
+
+// Standard includes
+#include <stdio.h>
+#include <stdlib.h>
+#include <iostream>
+#include <mutex>
+#include <string.h>
+#include <ctime>
+#include <chrono>
+#include <thread>
+
+// PCL includes
+#include <pcl/common/common_headers.h>
+#include <pcl/visualization/pcl_visualizer.h>
+
+// User Includes
+#include "CondCompile.hpp"
+#endif
+

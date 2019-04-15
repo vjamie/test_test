@@ -1,0 +1,22 @@
+int H_MIN = 100;
+int H_MAX = 150;
+
+int S_MIN = 200;
+int S_MAX = 256;
+
+int V_MIN = 100;
+int V_MAX = 150;
+
+int R_MIN = 220;
+int R_MAX = 255;
+
+int G_MIN = 0;
+int G_MAX = 30;
+
+int B_MIN = 0;
+int B_MAX = 30;
+
+int getx;
+int gety;
+int getFlag;
+

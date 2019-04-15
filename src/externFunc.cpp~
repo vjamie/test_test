@@ -1,0 +1,514 @@
+#include "externFunc.hpp"
+int H_MIN = 100;
+int H_MAX = 150;
+
+int S_MIN = 200;
+int S_MAX = 256;
+
+int V_MIN = 100;
+int V_MAX = 150;
+
+int R_MIN = 220;
+int R_MAX = 255;
+
+int G_MIN = 0;
+int G_MAX = 30;
+
+int B_MIN = 0;
+int B_MAX = 30;
+
+
+int getx;
+int gety;
+int getFlag;
+
+void on_eventhandle(int event, int x, int y, int flag, void* param){
+
+	switch (event)
+	{	
+		case CV_EVENT_LBUTTONDOWN:
+		if (getFlag == 0)
+		{	
+			getx = x;
+			gety = y;
+			getFlag = 1;
+		}
+		else if (getFlag == 1) getFlag = 2; break;
+
+		case CV_EVENT_RBUTTONDOWN:
+		getFlag = 0; break;
+	}
+}
+
+
+void HSV_Find(cv::Mat hsv_frame, cv::Mat rgb_frame){
+	
+	cv::setMouseCallback("HSV", on_eventhandle, NULL);
+
+	cv::imshow("HSV", hsv_frame);
+	cv::Vec3b hsv = hsv_frame.at<cv::Vec3b>(getx, gety);
+	cv::Vec3b rgb = rgb_frame.at<cv::Vec3b>(getx, gety);
+
+	int H = hsv.val[0];
+	int S = hsv.val[1];
+	int V = hsv.val[2];
+	
+	int B = rgb.val[0];
+	int G = rgb.val[1];
+	int R = rgb.val[2];
+
+	cout<<"H:" << H <<" "<<"S: " << S << " " <<"V: "<< V << " "<<"R: "<< R << " "<<"G: "<< G << " "<<"B: "<< B << " "<< "\n";
+}		
+
+cv::Mat HSV_Convert(cv::Mat frame){
+
+	cv::Mat HSV_frame;
+	cv::cvtColor(frame, HSV_frame, CV_RGB2HSV);
+
+	return HSV_frame;
+}
+
+void on_trackbar(int, void*)
+{
+	//This function gets called whenever a
+	// trackbar position is changed
+}
+
+void createTrackbars(){
+
+	cv::createTrackbar("H_MIN", WindowName, &H_MIN, H_MAX, on_trackbar);
+	cv::createTrackbar("H_MAX", WindowName, &H_MAX, H_MAX, on_trackbar);
+	cv::createTrackbar("S_MIN", WindowName, &S_MIN, S_MAX, on_trackbar);
+	cv::createTrackbar("S_MAX", WindowName, &S_MAX, S_MAX, on_trackbar);
+	cv::createTrackbar("V_MIN", WindowName, &V_MIN, V_MAX, on_trackbar);
+	cv::createTrackbar("V_MAX", WindowName, &V_MAX, V_MAX, on_trackbar);
+}
+
+void circleRANSAC(cv::Mat &hsv_right, cv::Mat &hsv_left, cv::Mat &rgb_right, cv::Mat &rgb_left, vector<cv::Vec3f> &circle_right, vector<cv::Vec3f> &circle_left, double canny_threshold, double circle_threshold, int numIterations)
+{
+	CV_Assert(hsv_right.type() == CV_8UC1 || hsv_right.type() == CV_8UC3);
+	CV_Assert(hsv_left.type() == CV_8UC1 || hsv_left.type() == CV_8UC3);
+
+	circle_right.clear();
+	circle_left.clear();
+
+	cv::Mat edge_right;
+	cv::Mat edge_left;
+
+	cv::Mat right_hue_range;
+	cv::Mat right_rgb_range;
+	cv::Mat left_hue_range;
+	cv::Mat left_rgb_range;
+	cv::Mat right_comb_frame;
+	cv::Mat left_comb_frame;
+	cv::Mat Gaussian_Blur_right;
+	cv::Mat Gaussian_Blur_left;
+
+
+	cv::inRange(hsv_right, cv::Scalar(H_MIN, S_MIN, V_MIN), cv::Scalar(H_MAX, S_MAX, V_MAX), right_hue_range);
+	cv::inRange(rgb_right, cv::Scalar(B_MIN, G_MIN, R_MIN), cv::Scalar(B_MAX, G_MAX, R_MAX), right_rgb_range);
+	cv::inRange(hsv_left, cv::Scalar(H_MIN, S_MIN, V_MIN), cv::Scalar(H_MAX, S_MAX, V_MAX), left_hue_range);
+	cv::inRange(rgb_left, cv::Scalar(B_MIN, G_MIN, R_MIN), cv::Scalar(B_MAX, G_MAX, R_MAX), left_rgb_range);
+	cv::addWeighted(right_hue_range, 0.9, right_rgb_range, 0.1, 0.0, right_comb_frame);
+	cv::addWeighted(left_hue_range, 0.9, left_rgb_range, 0.1, 0.0, left_comb_frame);
+	cv::GaussianBlur(right_comb_frame, Gaussian_Blur_right, cv::Size(9, 9), 2, 2);
+	cv::GaussianBlur(left_comb_frame, Gaussian_Blur_left, cv::Size(9, 9), 2, 2);
+	
+	cv::Canny(Gaussian_Blur_left, edge_left, MAX(canny_threshold / 2, 1), canny_threshold, 3);
+	cv::Canny(Gaussian_Blur_right, edge_right, MAX(canny_threshold / 2, 1), canny_threshold, 3);
+
+
+#ifdef SHOWRESULT
+	// Create point set from Canny Output
+	cv::imshow("canny_left", edge_left);
+	cv::imshow("canny_right", edge_right);
+#endif
+
+	std::vector<cv::Point2d> point_right;
+	std::vector<cv::Point2d> point_left;
+	
+	for (int r = 0; r < edge_right.rows; r++)
+	{
+		for (int c = 0; c < edge_right.cols; c++)
+		{
+			if (edge_right.at<unsigned char>(r, c) == 255)
+			{
+				point_right.push_back(cv::Point2d(c, r));
+			}
+		}
+	}	
+
+	for (int r = 0; r < edge_left.rows; r++)
+	{
+		for (int c = 0; c < edge_left.cols; c++)
+		{
+			if (edge_left.at<unsigned char>(r, c) == 255)
+			{
+				point_left.push_back(cv::Point2d(c, r));
+			}
+		}
+	}	
+
+	cout << point_right.size() << "\n";
+
+	// 4 point objects to hold the random samples
+	cv::Point2d rightA;
+	cv::Point2d rightB;
+	cv::Point2d rightC;
+	cv::Point2d rightD;
+
+	// distances between points
+	double AB_right;
+	double BC_right;
+	double CA_right;
+	double DC_right;
+
+	// varibales for line equations y = mx + b
+	double m_AB_right;
+	double b_AB_right;
+	double m_BC_right;
+	double b_BC_right;
+
+	// varibles for line midpoints
+	double Xmidright_AB;
+	double Ymidright_AB;
+	double Xmidright_BC;
+	double Ymidright_BC;
+
+	// variables for perpendicular bisectors
+	double m2_AB_right;
+	double m2_BC_right;
+	double b2_AB_right;
+	double b2_BC_right;
+
+	// 4 point objects to hold the random samples
+	cv::Point2d leftA;
+	cv::Point2d leftB;
+	cv::Point2d leftC;
+	cv::Point2d leftD;
+
+	// distances between points
+	double AB_left;
+	double BC_left;
+	double CA_left;
+	double DC_left;
+
+	// varibales for line equations y = mx + b
+	double m_AB_left;
+	double b_AB_left;
+	double m_BC_left;
+	double b_BC_left;
+
+	// varibles for line midpoints
+	double Xmidleft_AB;
+	double Ymidleft_AB;
+	double Xmidleft_BC;
+	double Ymidleft_BC;
+
+	// variables for perpendicular bisectors
+	double m2_AB_left;
+	double m2_BC_left;
+	double b2_AB_left;
+	double b2_BC_left;
+	// RANSAC
+	cv::RNG rng;
+	int min_point_separation = 10; // change to be relative to image size?
+	int colinear_tolerance = 1; // make sure points are not on a line
+	double radius_tolerance = 2.2; // change to be relative to image size?
+	int points_threshold = 10; //should always be greater than 4
+	//double min_circle_separation = 10; //reject a circle if it is too close to a previously found circle
+	//double min_radius = 10.0; //minimum radius for a circle to not be rejected
+
+	int x_right, y_right;
+	cv::Point2d center_right;
+	double radius_right;
+
+	int x_left, y_left;
+	cv::Point2d center_left;
+	double radius_left;
+
+
+	// Iterate
+	for (int iteration = 0; iteration < numIterations; iteration++)
+	{
+		if (point_right.size() > 0 && point_left.size() > 0)
+		{		
+			// get 4 random points
+			rightA = point_right[rng.uniform((int)0, (int)point_right.size())];
+			rightB = point_right[rng.uniform((int)0, (int)point_right.size())];
+			rightC = point_right[rng.uniform((int)0, (int)point_right.size())];
+			rightD = point_right[rng.uniform((int)0, (int)point_right.size())];
+			
+			leftA = point_left[rng.uniform((int)0, (int)point_left.size())];
+			leftB = point_left[rng.uniform((int)0, (int)point_left.size())];
+			leftC = point_left[rng.uniform((int)0, (int)point_left.size())];
+			leftD = point_left[rng.uniform((int)0, (int)point_left.size())];
+
+			// calc lines
+			AB_right = norm(rightA - rightB);
+			BC_right = norm(rightB - rightC);
+			CA_right = norm(rightC - rightA);
+			DC_right = norm(rightD - rightC);
+
+			// calc lines
+			AB_left = norm(leftA - leftB);
+			BC_left = norm(leftB - leftC);
+			CA_left = norm(leftC - leftA);
+			DC_left = norm(leftD - leftC);
+
+
+			// one or more random points are too close together
+			if (AB_right < min_point_separation || BC_right < min_point_separation || CA_right < min_point_separation || DC_right < min_point_separation) continue;
+
+
+			//find line equations for AB and BC
+			//AB
+			m_AB_right = (rightB.y - rightA.y) / (rightB.x - rightA.x + 0.000000001); //avoid divide by 0
+			b_AB_right= rightB.y - m_AB_right*rightB.x;
+
+			//BC
+			m_BC_right = (rightC.y - rightB.y) / (rightC.x - rightB.x + 0.000000001); //avoid divide by 0
+			b_BC_right = rightC.y - m_BC_right*rightC.x;
+
+
+			// one or more random points are too close together
+			if (AB_left < min_point_separation || BC_left < min_point_separation || CA_left < min_point_separation || DC_left < min_point_separation) continue;
+
+
+			//find line equations for AB and BC
+			//AB
+			m_AB_left = (leftB.y - leftA.y) / (leftB.x - leftA.x + 0.000000001); //avoid divide by 0
+			b_AB_left= leftB.y - m_AB_left*leftB.x;
+
+			//BC
+			m_BC_left = (leftC.y - leftB.y) / (leftC.x - leftB.x + 0.000000001); //avoid divide by 0
+			b_BC_left = leftC.y - m_BC_left*leftC.x;
+
+
+
+			//test colinearity (ie the points are not all on the same line)
+			if (abs(rightC.y - (m_AB_right*rightC.x + b_AB_right + colinear_tolerance)) < colinear_tolerance) continue;
+
+			//find perpendicular bisector
+			//AB
+			//midpoint
+			Xmidright_AB = (rightB.x + rightA.x) / 2.0;
+			Ymidright_AB = m_AB_right * Xmidright_AB + b_AB_right;
+			//perpendicular slope
+			m2_AB_right = -1.0 / m_AB_right;
+			//find b2
+			b2_AB_right = Ymidright_AB - m2_AB_right*Xmidright_AB;
+
+			//BC
+			//midpoint
+			Xmidright_BC = (rightC.x + rightB.x) / 2.0;
+			Ymidright_BC = m_BC_right * Xmidright_BC + b_BC_right;
+			//perpendicular slope
+			m2_BC_right = -1.0 / m_BC_right;
+			//find b2
+			b2_BC_right = Ymidright_BC - m2_BC_right*Xmidright_BC;
+
+			//find intersection = circle center
+			x_right = (b2_AB_right - b2_BC_right) / (m2_BC_right - m2_AB_right);
+			y_right = m2_AB_right * x_right + b2_AB_right;
+			center_right = cv::Point2d(x_right, y_right);
+			radius_right = cv::norm(center_right - rightB);
+
+
+			//test colinearity (ie the points are not all on the same line)
+			if (abs(leftC.y - (m_AB_left*leftC.x + b_AB_left + colinear_tolerance)) < colinear_tolerance) continue;
+
+			//find perpendicular bisector
+			//AB
+			//midpoint
+			Xmidleft_AB = (leftB.x + leftA.x) / 2.0;
+			Ymidleft_AB = m_AB_left * Xmidleft_AB + b_AB_left;
+			//perpendicular slope
+			m2_AB_left = -1.0 / m_AB_left;
+			//find b2
+			b2_AB_left = Ymidleft_AB - m2_AB_left*Xmidleft_AB;
+
+			//BC
+			//midpoint
+			Xmidleft_BC = (leftC.x + leftB.x) / 2.0;
+			Ymidleft_BC = m_BC_left * Xmidleft_BC + b_BC_left;
+			//perpendicular slope
+			m2_BC_left = -1.0 / m_BC_left;
+			//find b2
+			b2_BC_left = Ymidleft_BC - m2_BC_left*Xmidleft_BC;
+
+			//find intersection = circle center
+			x_left = (b2_AB_left - b2_BC_left) / (m2_BC_left - m2_AB_left);
+			y_left = m2_AB_left * x_left + b2_AB_left;
+			center_left = cv::Point2d(x_left, y_left);
+			radius_left = cv::norm(center_left - leftB);
+
+			/// geometry debug image
+			if (false)
+			{
+				cv::Mat debug_image_right = edge_right.clone();
+				cv::Mat debug_image_left = edge_left.clone();
+				//cvtColor(debug_image, debug_image, CV_GRAY2RGB);
+
+				cv::Scalar pink(255, 0, 255);
+				cv::Scalar blue(255, 0, 0);
+				cv::Scalar green(0, 255, 0);
+				cv::Scalar yellow(0, 255, 255);
+				cv::Scalar red(0, 0, 255);
+
+				// the 3 points from which the circle is calculated in pink
+				circle(debug_image_right, rightA, 3, pink);
+				circle(debug_image_right, rightB, 3, pink);
+				circle(debug_image_right, rightC, 3, pink);
+
+				circle(debug_image_left, leftA, 3, pink);
+				circle(debug_image_left, leftB, 3, pink);
+				circle(debug_image_left, leftC, 3, pink);
+
+
+				// the 2 lines (blue) and the perpendicular bisectors (green)
+				line(debug_image_right, rightA, rightB, blue);
+				line(debug_image_right, rightB, rightC, blue);
+				line(debug_image_right, cv::Point(Xmidright_AB, Ymidright_AB), center_right, green);
+				line(debug_image_right, cv::Point(Xmidright_BC, Ymidright_BC), center_right, green);
+
+				line(debug_image_left, leftA, leftB, blue);
+				line(debug_image_left, leftB, leftC, blue);
+				line(debug_image_left, cv::Point(Xmidleft_AB, Ymidleft_AB), center_left, green);
+				line(debug_image_left, cv::Point(Xmidleft_BC, Ymidleft_BC), center_left, green);
+
+				circle(debug_image_right, center_right, 3, yellow); // center
+				circle(debug_image_right, center_right, radius_right, yellow);// circle
+
+				circle(debug_image_left, center_left, 3, yellow); // center
+				circle(debug_image_left, center_left, radius_left, yellow);// circle
+
+				// 4th point check
+				circle(debug_image_right, rightD, 3, red);
+				// 4th point check
+				circle(debug_image_left, leftD, 3, red);
+
+
+				cv::imshow("ransac debug", debug_image_right);
+				cv::waitKey(0);
+			}
+
+			//check if the 4 point is on the circle
+			if (abs(cv::norm(rightD - center_right) - radius_right) > radius_tolerance) continue;
+
+			// vote
+			std::vector<int> votes_right;
+			std::vector<int> no_votes_right;
+			for (int i = 0; i < (int)point_right.size(); i++)
+			{
+				double vote_radius = norm(point_right[i] - center_right);
+
+				if (abs(vote_radius - radius_right) < radius_tolerance)
+				{
+					votes_right.push_back(i);
+				}
+				else
+				{
+					no_votes_right.push_back(i);
+				}
+			}
+
+			if (abs(cv::norm(leftD - center_left) - radius_left) > radius_tolerance) continue;
+
+			// vote
+			std::vector<int> votes_left;
+			std::vector<int> no_votes_left;
+			for (int i = 0; i < (int)point_left.size(); i++)
+			{
+				double vote_radius = norm(point_left[i] - center_left);
+
+				if (abs(vote_radius - radius_left) < radius_tolerance)
+				{
+					votes_left.push_back(i);
+				}
+				else
+				{
+					no_votes_left.push_back(i);
+				}
+			}
+
+			// check votes vs circle_threshold
+			if ((float)votes_right.size() / (2.0*CV_PI*radius_right) >= circle_threshold)
+			{
+				circle_right.push_back(cv::Vec3f(x_right, y_right, radius_right));
+
+				// voting debug images
+				if (false)
+				{
+					cv::Mat debug_image_right2 = edge_right.clone();
+					//cvtColor(debug_image2, debug_image2, CV_GRAY2RGB);
+
+					cv::Scalar yellow(0, 255, 255);
+					cv::Scalar green(0, 255, 0);
+
+					circle(debug_image_right2, center_right, 3, yellow); // center
+					circle(debug_image_right2, center_right, radius_right, yellow);// circle
+
+					// draw points that voted
+					for (int i = 0; i < (int)votes_right.size(); i++)
+					{
+						circle(debug_image_right2, point_right[votes_right[i]], 1, green);
+					}
+
+					cv::imshow("ransac debug_right", debug_image_right2);
+					cv::waitKey(0);
+				}
+
+				// remove points from the set so they can't vote on multiple circles
+				std::vector<cv::Point2d> new_point_right;
+				for (int i = 0; i < (int)no_votes_right.size(); i++)
+				{
+					new_point_right.push_back(point_right[no_votes_right[i]]);
+				}
+				point_right.clear();
+				point_right = new_point_right;
+			}
+
+			if ((float)votes_left.size() / (2.0*CV_PI*radius_left) >= circle_threshold)
+			{
+				circle_left.push_back(cv::Vec3f(x_left, y_left, radius_left));
+
+				// voting debug images
+				if (false)
+				{
+					cv::Mat debug_image_left2 = edge_left.clone();
+					//cvtColor(debug_image2, debug_image2, CV_GRAY2RGB);
+
+					cv::Scalar yellow(0, 255, 255);
+					cv::Scalar green(0, 255, 0);
+
+					circle(debug_image_left2, center_left, 3, yellow); // center
+					circle(debug_image_left2, center_left, radius_left, yellow);// circle
+
+					// draw points that voted
+					for (int i = 0; i < (int)votes_left.size(); i++)
+					{
+						circle(debug_image_left2, point_left[votes_left[i]], 1, green);
+					}
+
+					cv::imshow("ransac debug", debug_image_left2);
+					cv::waitKey(0);
+				}
+
+				// remove points from the set so they can't vote on multiple circles
+				std::vector<cv::Point2d> new_point_left;
+				for (int i = 0; i < (int)no_votes_left.size(); i++)
+				{
+					new_point_left.push_back(point_left[no_votes_left[i]]);
+				}
+				point_left.clear();
+				point_left = new_point_left;
+			}
+		}
+		// stop RANSAC if there are few points left
+		if ((int)point_right.size() < points_threshold || (int)point_left.size() < points_threshold)
+			break;
+	}
+
+	return;
+}

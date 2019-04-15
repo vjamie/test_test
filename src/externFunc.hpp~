@@ -1,0 +1,22 @@
+#ifndef EXTERNFUNC_HPP
+#define EXTERNFUNC_HPP
+
+#include "stereo_vision_node.hpp"
+
+using namespace std;
+
+const string WindowName = "Stereo Output";
+const string WindowRIGHT = "Right Output";
+const string WindowLEFT = "left Output";
+
+void on_eventhandle(int event, int x, int y, int flag, void* param);
+void HSV_Find(cv::Mat hsv_frame, cv::Mat rgb_frame)
+
+cv::Mat HSV_Convert(cv::Mat frame);
+
+void on_trackbar(int, void*);
+
+void createTrackbars();
+
+void circleRANSAC(cv::Mat &hsv_right, cv::Mat &hsv_left, cv::Mat &rgb_right, cv::Mat &rgb_left, vector<cv::Vec3f> &circle_right, vector<cv::Vec3f> &circle_left, double canny_threshold, double circle_threshold, int numIterations);
+#endif

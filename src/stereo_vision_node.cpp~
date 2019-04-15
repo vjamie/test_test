@@ -1,0 +1,111 @@
+#include "externFunc.hpp"
+#include "stereo_vision_node.hpp"
+
+#define disparity_computation 1
+
+using namespace sl::zed;
+
+int main(int argc, char** argv){
+
+	ros::init(argc, argv, "stereo_vision_node");
+	ros::NodeHandle nh;
+	Camera* zed;
+
+	vector<cv::Vec3f> circle_Right;
+	vector<cv::Vec3f> circle_Left;
+
+	double canny_threshold = 100.0;
+	double circle_threshold = 0.3;
+	int iterations = 1000;	
+	char text_right[30];
+	char text_left[30];
+	
+        zed = new Camera(VGA);
+
+	sl::zed::ERRCODE err = zed->init(sl::zed::MODE::PERFORMANCE, 0, true);
+	cout << sl::zed::errcode2str(err) << endl;
+	if (err != sl::zed::SUCCESS) delete zed;
+
+	int width = zed->getImageSize().width;
+	int height = zed->getImageSize().height;
+	
+	cout << "width" << width << "height" << height << "\n";
+
+	cv::Mat	rgb_Left(height, width, CV_8UC4);
+	cv::Mat	rgb_Right(height, width, CV_8UC4);
+	cv::Mat hsv_Left(height, width, CV_8UC4);
+	cv::Mat hsv_Right(height, width, CV_8UC4);
+
+	cv::namedWindow(WindowRIGHT, cv::WINDOW_AUTOSIZE);
+	cv::namedWindow(WindowLEFT, cv::WINDOW_AUTOSIZE);
+
+	while (1) {
+
+		zed->grab(SENSING_MODE::RAW, 1, disparity_computation);		
+
+		slMat2cvMat(zed->retrieveImage(sl::zed::SIDE::LEFT)).copyTo(rgb_Left);		
+		slMat2cvMat(zed->retrieveImage(sl::zed::SIDE::RIGHT)).copyTo(rgb_Right);
+	
+		hsv_Right = HSV_Convert(rgb_Right);
+		hsv_Left = HSV_Convert(rgb_Left);
+	
+#ifdef HSVFIND
+		HSV_Find(hsv_Right, rgb_Right);
+#endif
+
+		const clock_t start = clock();
+		
+		circleRANSAC(hsv_Right, hsv_Left, rgb_Right, rgb_Left, circle_Right, circle_Left, canny_threshold, circle_threshold, iterations);		
+		clock_t end = clock();
+
+		//cout << "Found " << (int)circle_Right.size() << " Circles." << "\n";
+
+		double time = ((double)(end - start)) / (double)CLOCKS_PER_SEC;
+		//cout << "RANSAC runtime: " << time << " seconds" << "\n";
+		
+		int size_right = (int)circle_Right.size();
+		int size_left = (int)circle_Left.size();
+
+		int circle_size = 0;
+
+		if (size_right >= size_left) circle_size = size_left;
+		else circle_size = size_right;
+		
+		for (int i = 0; i < circle_size; i++)
+		{
+			int x_right = circle_Right[i][0];
+			int y_right = circle_Right[i][1];
+			float rad_right = circle_Right[i][2];
+			
+			circle(rgb_Right, cv::Point(x_right,y_right), 3, cv::Scalar(0, 255, 0), -1, 8, 0);
+			circle(rgb_Right, cv::Point(x_right, y_right), rad_right, cv::Scalar(0, 255, 0), 2);
+			sprintf(text_right, "CP:%d, %d, R:%.2f", x_right, y_right, rad_right);
+			cv::putText(rgb_Right, text_right, cvPoint(x_right, y_right), CV_FONT_HERSHEY_PLAIN, 1.5, cvScalar(0, 0, 255), 2);
+
+			int x_left = circle_Left[i][0];
+			int y_left = circle_Left[i][1];
+			float rad_left = circle_Left[i][2];
+			
+			circle(rgb_Left, cv::Point(x_left,y_left), 3, cv::Scalar(0, 255, 0), -1, 8, 0);
+			circle(rgb_Left, cv::Point(x_left, y_left), rad_left, cv::Scalar(0, 255, 0), 2);
+			sprintf(text_left, "CP:%d, %d, R:%.2f", x_left, y_left, rad_left);
+			cv::putText(rgb_Left, text_left, cvPoint(x_left, y_left), CV_FONT_HERSHEY_PLAIN, 1.5, cvScalar(0, 0, 255), 2);							
+		}	
+
+#ifdef SHOWRESULT
+		cv::imshow(WindowRIGHT, rgb_Right);					
+		cv::imshow(WindowLEFT, rgb_Left);
+#endif
+		if (cv::waitKey(33) != -1) break;
+	}
+	delete zed;
+	return 0;
+}
+
+
+
+
+
+
+
+
